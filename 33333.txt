@@ -1,0 +1,142 @@
+import logging
+import xml.etree.ElementTree as ET
+from aiogram import Bot, types
+from aiogram.dispatcher import Dispatcher
+from aiogram.utils import executor
+from config import Secrets
+from logic.handlers import events
+import datetime
+
+# Создаем объекты Bot и Dispatcher и инициализируем их
+bot = Bot(token=Secrets.BOT_TOKEN)
+dp = Dispatcher(bot)
+
+# Создаем словарь для отслеживания состояния запроса ключа
+key_request = {}
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+
+
+# Функция для записи информации о запросах в лог-файл
+def log_request(message, text):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    current_time = datetime.datetime.now()
+
+    log_entry = f"[{current_time}] User ID: {user_id}, Username: {username}, Request: {text}\n"
+
+    with open("bot_log.txt", "a") as log_file:
+        log_file.write(log_entry)
+
+
+# Создаем обработчик для команды /start
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    log_request(message, message.text)
+    keyboard = types.InlineKeyboardMarkup()
+    gro_button = types.InlineKeyboardButton(text='ГРО', callback_data='gro')
+    stop_button = types.InlineKeyboardButton(text='STOP', callback_data='stop')
+    help_button = types.InlineKeyboardButton(text='HELP', callback_data='help')
+    about_button = types.InlineKeyboardButton(text='ABOUT', callback_data='about')
+    keyboard.add(gro_button)
+    keyboard.add(stop_button, help_button, about_button)
+
+    # Передаем информацию о запросе ключа
+    await bot.send_message(message.from_user.id, "Нажмите кнопку 'ГРО' и введите название пункта:",
+                           reply_markup=keyboard)
+    logging.info(f"User {message.from_user.id} started the bot")
+
+
+# Создаем обработчик для кнопки "HELP"
+@dp.callback_query_handler(lambda c: c.data == 'help')
+async def show_help(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+
+    # Отправляем информацию о помощи
+    await bot.send_message(callback_query.from_user.id,
+                           "Это бот помощи. Введите команду /help, чтобы получить справку.")
+    logging.info(f"User {callback_query.from_user.id} requested help")
+
+
+# Создаем обработчик для кнопки "ABOUT"
+@dp.callback_query_handler(lambda c: c.data == 'about')
+async def show_about(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+
+    # Отправляем информацию о боте
+    await bot.send_message(callback_query.from_user.id, "Это бот для получения информации о боте.")
+    logging.info(f"User {callback_query.from_user.id} requested about")
+
+
+# Создаем обработчик для кнопки "ГРО"
+@dp.callback_query_handler(lambda c: c.data == 'gro')
+async def get_value_by_key(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+
+    user_id = callback_query.from_user.id
+
+    # Проверяем состояние запроса ключа для этого пользователя
+    if user_id in key_request:
+        await bot.send_message(user_id, "Запрос ключа уже ожидается")
+        logging.info(f"User {user_id} tried to make another key request while one was already pending")
+    else:
+        await bot.send_message(user_id, "Введите название пункта:")
+
+        # Устанавливаем состояние ожидания ключа для пользователя
+        key_request[user_id] = True
+        logging.info(f"User {user_id} made a GRO query")
+
+
+# Создаем обработчик для кнопки STOP
+@dp.callback_query_handler(lambda c: c.data == 'stop')
+async def stop_key_request(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+
+    user_id = callback_query.from_user.id
+
+    # Проверяем состояние запроса ключа для этого пользователя
+    if user_id in key_request:
+        del key_request[user_id]
+        await bot.send_message(user_id, "Запрос ключа остановлен")
+        logging.info(f"User {user_id} stopped the key request")
+    else:
+        await bot.send_message(user_id, "Запрос ключа не активен")
+        logging.warning(f"User {user_id} tried to stop the key request when it was not active")
+
+
+@dp.message_handler()
+async def process_key(message: types.Message):
+    user_id = message.from_user.id
+
+    # Проверяем состояние запроса ключа для этого пользователя
+    if user_id in key_request:
+        key = message.text.strip().lower()
+
+        # Загружаем данные из XML-файла
+        tree = ET.parse('data.xml')
+        root = tree.getroot()
+
+        value = None
+        # Поиск значения по ключу в XML
+        for child in root:
+            if child.attrib['key'] == key:
+                value = child.text
+                break
+
+        if value is not None:
+            await message.reply(f"Название пункта ГРО '{key}': {value}")
+            logging.info(f"User {user_id} successfully got the value for key '{key}'")
+        else:
+            await message.reply(f"Пункта ГРО '{key}' не найдено.")
+            logging.warning(f"User {user_id} could not find the value for key '{key}'")
+
+        # Удаляем состояние ожидания ключа для пользователя
+        del key_request[user_id]
+    else:
+        await message.reply("Сударь, будь добр, введи /start для запроса ГРО!")
+
+
+# Добавляем функции on_startup и on_shutdown в параметры executor.start_polling
+if __name__ == '__main__':
+    executor.start_polling(dp, on_startup=events.on_startup, on_shutdown=events.on_shutdown, timeout=60)

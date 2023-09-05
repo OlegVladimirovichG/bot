@@ -1,0 +1,54 @@
+import xml.etree.ElementTree as ET
+from aiogram import Bot, types
+from aiogram.dispatcher import Dispatcher
+from aiogram.utils import executor
+from config import Secrets
+
+# Создаем объекты Bot и Dispatcher и инициализируем их
+bot = Bot(token=Secrets.BOT_TOKEN)
+dp = Dispatcher(bot)
+
+# Создаем обработчик для команды /start
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    keyboard = types.InlineKeyboardMarkup()
+    gro_button = types.InlineKeyboardButton(text='ГРО', callback_data='gro')
+    keyboard.add(gro_button)
+    await message.reply('Привет! Нажмите кнопку \'ГРО\' и введите название пункта:', reply_markup=keyboard)
+
+# Создаем обработчик для кнопки "ГРО"
+@dp.callback_query_handler(lambda c: c.data == 'gro')
+async def get_value_by_key(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, "Введите название пункта:")
+
+@dp.message_handler()
+async def process_key(message: types.Message):
+    key = message.text.strip().lower()
+
+    # Загрузка данных из XML файла
+    tree = ET.parse('data.xml')
+    root = tree.getroot()
+
+    value = None
+    # Поиск значения по ключу в XML
+    for child in root:
+        if child.attrib['key'] == key:
+            value = child.text
+            break
+
+    if value:
+        await message.reply(f"название пункта ГРО '{key}': {value}")
+    else:
+        await message.reply(f"Пункта ГРО '{key}' не найдено.")
+
+# Функция для вывода сообщений при запуске и остановке бота
+async def on_startup(dp):
+    await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot started')
+
+async def on_shutdown(dp):
+    await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot stopped')
+
+# Добавляем функции on_startup и on_shutdown в параметры executor.start_polling
+if __name__ == '__main__':
+    executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown)
