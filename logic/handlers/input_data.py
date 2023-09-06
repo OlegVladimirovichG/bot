@@ -1,18 +1,12 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from logic.utils.states import MyState
 
-# from main import MyState
 
-
-async def input_gro(message: types.Message):
+async def input_data(message: types.Message):
     await message.reply("Введите данные в формате 'название, x, y, h': ")
-    # await MyState.waiting_for_data.set()
+    await MyState.waiting_for_data.set()
 
-async def show_data(message: types.Message):
-    with open('baza.xml', 'r') as f:
-        data = f.read()
-    formatted_data = data.replace('<name>', '').replace('</name>', '').replace('<x>', 'x=').replace('</x>', '').replace('<y>', 'y=').replace('</y>', '').replace('<h>', 'h=').replace('</h>', '')
-    await message.reply(formatted_data)
 
 async def process_data(message: types.Message, state: FSMContext):
     data = message.text.split(',')
@@ -22,16 +16,23 @@ async def process_data(message: types.Message, state: FSMContext):
         y = data[2].strip()
         h = data[3].strip()
 
-        with open('baza.xml', 'a') as f:
-            f.write(f"**********************\n"
-                    f" "
-                    f"<name>{name}: \n"
-                    f"              </name><x>{x}</x>  \n"
-                    f"              <y>{y}</y>  \n"
-                    f"              <h>{h}</h> \n")
+        with open('baza.xml', 'a', encoding='utf-8') as f:
+            f.write(
+                f"**********************\n"
+                f"<name>{name}: \n"
+                f"              </name><x>{x}</x>  \n"
+                f"              <y>{y}</y>  \n"
+                f"              <h>{h}</h> \n"
+            )
 
         await message.reply("Данные успешно записаны")
     else:
         await message.reply("Некорректный формат данных")
 
     await state.finish()
+async def input_raw_data(callback_query: types.CallbackQuery):
+    await callback_query.answer()  # Отправляем ответ пользователю, чтобы убрать "часики"
+    await input_data(callback_query.message)  # Запускаем функцию input_data из модуля input_data
+
+
+
