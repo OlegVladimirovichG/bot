@@ -7,5 +7,5 @@ def log_request(user_id, username, text):
 
     log_entry = f"[{current_time}] User ID: {user_id}, Username: {username}, Request: {text}\n"
 
-    with open("bot_log.txt", "a", encoding="utf-8") as log_file:
+    with open("bot_log.txt", "a") as log_file:
         log_file.write(log_entry)
