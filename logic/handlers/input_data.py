@@ -30,9 +30,8 @@ async def process_data(message: types.Message, state: FSMContext):
         await message.reply("Некорректный формат данных")
 
     await state.finish()
+
+
 async def input_raw_data(callback_query: types.CallbackQuery):
     await callback_query.answer()  # Отправляем ответ пользователю, чтобы убрать "часики"
     await input_data(callback_query.message)  # Запускаем функцию input_data из модуля input_data
-
-
-

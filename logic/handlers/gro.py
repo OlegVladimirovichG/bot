@@ -28,8 +28,6 @@ async def get_value_by_key(callback_query: types.CallbackQuery):
 async def process_key(message: types.Message):
     user_id = message.from_user.id
 
-    # Проверяем состояние запроса ключа для этого пользователя
-    # if user_id in key_request:
     key = message.text.strip().upper()
 
     # Загружаем данные из XML-файла
@@ -52,5 +50,3 @@ async def process_key(message: types.Message):
 
     # Удаляем состояние ожидания ключа для пользователя
     del key_request[user_id]
-# else:
-#     await message.reply("Сударь, будь добр, введи /start для запроса ГРО!")

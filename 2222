@@ -1,54 +1,421 @@
-import xml.etree.ElementTree as ET
-from aiogram import Bot, types
-from aiogram.dispatcher import Dispatcher
-from aiogram.utils import executor
-from config import Secrets
+какие тесты могут быть проведены?
 
-# Создаем объекты Bot и Dispatcher и инициализируем их
-bot = Bot(token=Secrets.BOT_TOKEN)
-dp = Dispatcher(bot)
+КОД ПРИВЕДЕН НИЖЕ
 
-# Создаем обработчик для команды /start
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    keyboard = types.InlineKeyboardMarkup()
-    gro_button = types.InlineKeyboardButton(text='ГРО', callback_data='gro')
-    keyboard.add(gro_button)
-    await message.reply('Привет! Нажмите кнопку \'ГРО\' и введите название пункта:', reply_markup=keyboard)
 
-# Создаем обработчик для кнопки "ГРО"
-@dp.callback_query_handler(lambda c: c.data == 'gro')
-async def get_value_by_key(callback_query: types.CallbackQuery):
+main.py {
+    import logging
+    from aiogram import Dispatcher, executor
+
+    from logic.config import bot
+    from logic.handlers import events, gro, start, show_about, show_help, stop, input_data, plan
+    from aiogram.contrib.fsm_storage.memory import MemoryStorage
+
+    from logic.handlers import show_data
+    from logic.utils.states import MyState
+
+    # Создаем объекты Bot и Dispatcher и инициализируем их
+
+    storage = MemoryStorage()
+    dp = Dispatcher(bot, storage=storage)
+
+    # Регистрируем обработчики
+    dp.register_message_handler(start.start, commands=['start'])
+    dp.register_message_handler(gro.process_key)
+    dp.register_callback_query_handler(gro.get_value_by_key, lambda c: c.data == 'gro')
+    dp.register_callback_query_handler(show_help.show_help, lambda c: c.data == 'help')
+    dp.register_callback_query_handler(show_about.show_about, lambda c: c.data == 'about')
+    dp.register_callback_query_handler(stop.stop_key_request, lambda c: c.data == 'stop')
+    dp.register_message_handler(input_data.process_data, state=MyState.waiting_for_data)
+    dp.register_callback_query_handler(show_data.show_data, lambda c: c.data == 'show_baza')
+    dp.register_callback_query_handler(input_data.input_raw_data, lambda c: c.data == 'input')
+    dp.register_callback_query_handler(plan.plan_callback, lambda c: c.data == 'plan')
+    dp.register_callback_query_handler(plan.floor1_callback, lambda c: c.data == 'floor1')
+    dp.register_callback_query_handler(plan.floor2_callback, lambda c: c.data == 'floor2')
+    dp.register_callback_query_handler(plan.floor3_callback, lambda c: c.data == 'floor3')
+
+
+
+    # Настройка логирования
+    logging.basicConfig(level=logging.INFO)
+
+    # Добавляем функции on_startup и on_shutdown в параметры executor.start_polling
+    if __name__ == '__main__':
+        executor.start_polling(dp, on_startup=events.on_startup, on_shutdown=events.on_shutdown, skip_updates=True)
+}
+
+logic.config.py {
+    from dataclasses import dataclass
+
+    from aiogram import Bot
+
+
+    @dataclass
+    class Secrets:
+        BOT_TOKEN: str = "6660964292:AAEHpmkk78OZAmm2hhbH7gIcF_DmDu2hCy0"
+        CHAT_ID: int = 1222943667
+
+
+    bot = Bot(token=Secrets.BOT_TOKEN)
+}
+
+
+logic.handlers.event.py {
+    from logic.config import bot, Secrets
+    import logging
+    from logic.utils.commands import set_commands
+
+
+    # Функции для вывода сообщений при запуске и остановке бота
+    async def on_startup(dp):
+        await set_commands(bot)
+        await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot started')
+        logging.info('Bot started')
+
+
+    async def on_shutdown(dp):
+        await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot stopped')
+        logging.info('Bot stopped')
+}
+
+logic.handlers.gro.py {
+    import logging
+    from aiogram import types
+    from logic.config import bot
+    import xml.etree.ElementTree as ET
+
+    key_request = {}
+
+
+    # Создаем обработчик для кнопки "ГРО"
+    async def get_value_by_key(callback_query: types.CallbackQuery):
+        await bot.answer_callback_query(callback_query.id)
+
+        user_id = callback_query.from_user.id
+
+        # Проверяем состояние запроса ключа для этого пользователя
+        if user_id in key_request:
+            await bot.send_message(user_id, "Запрос ключа уже ожидается")
+            logging.info(f"User {user_id} tried to make another key request while one was already pending")
+        else:
+            await bot.send_message(user_id, "Введите название пункта:")
+
+            # Устанавливаем состояние ожидания ключа для пользователя
+            key_request[user_id] = True
+            logging.info(f"User {user_id} made a GRO query")
+
+
+    # Создаем обработчик для ввода ключа
+    async def process_key(message: types.Message):
+        user_id = message.from_user.id
+
+        # Проверяем состояние запроса ключа для этого пользователя
+        # if user_id in key_request:
+        key = message.text.strip().upper()
+
+        # Загружаем данные из XML-файла
+        tree = ET.parse('data.xml')
+        root = tree.getroot()
+
+        value = None
+        # Поиск значения по ключу в XML
+        for child in root:
+            if child.attrib['key'] == key:
+                value = child.text
+                break
+
+        if value is not None:
+            await message.reply(f"Координаты ' {key} ': {value}")
+            logging.info(f"User {user_id} successfully got the value for key '{key}'")
+        else:
+            await message.reply(f"Пункта ГРО '{key}' не найдено.")
+            logging.warning(f"User {user_id} could not find the value for key '{key}'")
+
+        # Удаляем состояние ожидания ключа для пользователя
+        del key_request[user_id]
+    # else:
+    #     await message.reply("Сударь, будь добр, введи /start для запроса ГРО!")
+}
+
+logic.handlers.input_data.py {
+    from aiogram import types
+    from aiogram.dispatcher import FSMContext
+    from logic.utils.states import MyState
+
+
+    async def input_data(message: types.Message):
+        await message.reply("Введите данные в формате 'название, x, y, h': ")
+        await MyState.waiting_for_data.set()
+
+
+    async def process_data(message: types.Message, state: FSMContext):
+        data = message.text.split(',')
+        if len(data) == 4:
+            name = data[0].strip()
+            x = data[1].strip()
+            y = data[2].strip()
+            h = data[3].strip()
+
+            with open('baza.xml', 'a', encoding='utf-8') as f:
+                f.write(
+                    f"**********************\n"
+                    f"<name>{name}: \n"
+                    f"              </name><x>{x}</x>  \n"
+                    f"              <y>{y}</y>  \n"
+                    f"              <h>{h}</h> \n"
+                )
+
+            await message.reply("Данные успешно записаны")
+        else:
+            await message.reply("Некорректный формат данных")
+
+        await state.finish()
+    async def input_raw_data(callback_query: types.CallbackQuery):
+        await callback_query.answer()  # Отправляем ответ пользователю, чтобы убрать "часики"
+        await input_data(callback_query.message)  # Запускаем функцию input_data из модуля input_data
+}
+
+logic.handlers.plan.py {
+    # Обработчик нажатия на кнопку 'ПЛАН'
+    from aiogram import types
+
+
+    async def plan_callback(query: types.CallbackQuery):
+        keyboard = types.InlineKeyboardMarkup()
+        floor1_button = types.InlineKeyboardButton(text='Этаж1', callback_data='floor1')
+        floor2_button = types.InlineKeyboardButton(text='Этаж2', callback_data='floor2')
+        floor3_button = types.InlineKeyboardButton(text='Этаж3', callback_data='floor3')
+
+        keyboard.add(floor1_button, floor2_button, floor3_button)
+
+        await query.message.edit_reply_markup(reply_markup=keyboard)
+
+
+    # Создаем обработчик для команды /start
+    async def floor1_callback(query: types.CallbackQuery):
+        # Обработка нажатия на кнопку 'Этаж1'
+        await query.answer("Показываю информацию по этажу 1")
+        photo1 = open('logic/utils/images/floor1/1.jpg', 'rb')
+        photo2 = open('logic/utils/images/floor1/2.jpg', 'rb')
+        photo3 = open('logic/utils/images/floor1/3.jpg', 'rb')
+        photo4 = open('logic/utils/images/floor1/4.jpg', 'rb')
+
+        await query.message.reply_photo(photo1)
+        await query.message.reply_photo(photo2)
+        await query.message.reply_photo(photo3)
+        await query.message.reply_photo(photo4)
+
+        photo1.close()
+        photo2.close()
+        photo3.close()
+        photo4.close()
+
+
+    # Создаем обработчик для команды /start
+    async def floor2_callback(query: types.CallbackQuery):
+        # Обработка нажатия на кнопку 'Этаж2'
+        await query.answer("Показываю информацию по этажу 2")
+        photo1 = open('logic/utils/images/floor2/1.jpg', 'rb')
+        photo2 = open('logic/utils/images/floor2/2.jpg', 'rb')
+        photo3 = open('logic/utils/images/floor2/3.jpg', 'rb')
+        photo4 = open('logic/utils/images/floor2/4.jpg', 'rb')
+
+        await query.message.reply_photo(photo1)
+        await query.message.reply_photo(photo2)
+        await query.message.reply_photo(photo3)
+        await query.message.reply_photo(photo4)
+
+        photo1.close()
+        photo2.close()
+        photo3.close()
+        photo4.close()
+
+
+    # Создаем обработчик для команды /start
+    async def floor3_callback(query: types.CallbackQuery):
+        # Обработка нажатия на кнопку 'Этаж3'
+        await query.answer("Показываю информацию по этажу 3")
+        # Обработка нажатия на кнопку 'Этаж2'
+        await query.answer("Показываю информацию по этажу 2")
+        photo1 = open('logic/utils/images/floor3/1.jpg', 'rb')
+        photo2 = open('logic/utils/images/floor3/2.jpg', 'rb')
+        photo3 = open('logic/utils/images/floor3/3.jpg', 'rb')
+        photo4 = open('logic/utils/images/floor3/4.jpg', 'rb')
+
+        await query.message.reply_photo(photo1)
+        await query.message.reply_photo(photo2)
+        await query.message.reply_photo(photo3)
+        await query.message.reply_photo(photo4)
+
+        photo1.close()
+        photo2.close()
+        photo3.close()
+        photo4.close()
+}
+
+logic.handlers.show_about.py {
+    import logging
+    from aiogram import types
+    from logic.config import bot
+
+
+    # Создаем обработчик для кнопки "ABOUT"
+    async def show_about(callback_query: types.CallbackQuery):
+        await bot.answer_callback_query(callback_query.id)
+
+        # Отправляем информацию о боте
+        await bot.send_message(callback_query.from_user.id, "Это бот для получения информации о боте.")
+        logging.info(f"User {callback_query.from_user.id} requested about")
+}
+
+logic.handlers.show_data.py {
+    from aiogram import types
+
+
+    async def show_data(callback_query: types.CallbackQuery):
+        message = callback_query.message
+        with open('baza.xml', 'r', encoding='utf-8') as f:
+            data = f.read()
+        formatted_data = (
+            data.replace('<name>', '')
+            .replace('</name>', '')
+            .replace('<x>', 'x=')
+            .replace('</x>', '')
+            .replace('<y>', 'y=')
+            .replace('</y>', '')
+            .replace('<h>', 'h=')
+            .replace('</h>', '')
+        )
+        await message.reply(formatted_data)
+}
+
+logic.handlers.show_help.py {
+    import logging
+    from aiogram import types
+    from logic.config import bot
+
+
+    # Создаем обработчик для кнопки "HELP"
+    async def show_help(callback_query: types.CallbackQuery):
+        await bot.answer_callback_query(callback_query.id)
+
+        # Отправляем информацию о помощи
+        await bot.send_message(callback_query.from_user.id,
+                               "Это бот помощи. Введите команду /help, чтобы получить справку.")
+        logging.info(f"User {callback_query.from_user.id} requested help")
+}
+
+logic.handlers.start.py {
+    from logic.utils.logger import log_request
+    from aiogram import types
+
+    key_request = {}
+
+
+    # Создаем обработчик для команды /start
+    async def start(message: types.Message):
+        keyboard = types.InlineKeyboardMarkup()
+        button_input = types.InlineKeyboardButton(text='ВВОД СЫРЫХ ГРО', callback_data='input')
+        button_show = types.InlineKeyboardButton(text='ПОКАЗАТЬ СЫРЫЕ ДАННЫЕ', callback_data='show_baza')
+        gro_button = types.InlineKeyboardButton(text='ЗАПРОС ГРО', callback_data='gro')
+        stop_button = types.InlineKeyboardButton(text='STOP', callback_data='stop')
+        help_button = types.InlineKeyboardButton(text='HELP', callback_data='help')
+        about_button = types.InlineKeyboardButton(text='ABOUT', callback_data='about')
+        plan_button = types.InlineKeyboardButton(text='ПЛАН', callback_data='plan')
+
+        keyboard.add(gro_button, plan_button)
+        keyboard.add(button_input, button_show)
+        keyboard.add(stop_button, help_button, about_button)
+
+        await message.reply(
+            "Нажмите на кнопку 'ЗАПРОС ГРО' и введи нахвание пункта, что бы получить координаты,"
+            "'ВВОД СЫРЫХ ГРО' для ввода данных в файл baza.xml или "
+            "'ПОКАЗАТЬ ВСЕ СЫРЫЕ ДАННЫЕ' для отображения содержимого baza.xml.",
+            reply_markup=keyboard)
+}
+
+logic.handlers.stop.py {
+import logging
+from aiogram import types
+from logic.config import bot
+
+key_request = {}
+
+
+# Создаем обработчик для кнопки STOP
+async def stop_key_request(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, "Введите название пункта:")
 
-@dp.message_handler()
-async def process_key(message: types.Message):
-    key = message.text.strip().lower()
+    user_id = callback_query.from_user.id
 
-    # Загрузка данных из XML файла
-    tree = ET.parse('data.xml')
-    root = tree.getroot()
-
-    value = None
-    # Поиск значения по ключу в XML
-    for child in root:
-        if child.attrib['key'] == key:
-            value = child.text
-            break
-
-    if value:
-        await message.reply(f"название пункта ГРО '{key}': {value}")
+    # Проверяем состояние запроса ключа для этого пользователя
+    if user_id in key_request:
+        del key_request[user_id]
+        await bot.send_message(user_id, "Запрос ключа остановлен")
+        logging.info(f"User {user_id} stopped the key request")
     else:
-        await message.reply(f"Пункта ГРО '{key}' не найдено.")
+        await bot.send_message(user_id, "Запрос ключа не активен")
+        logging.warning(f"User {user_id} tried to stop the key request when it was not active")
+}
 
-# Функция для вывода сообщений при запуске и остановке бота
-async def on_startup(dp):
-    await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot started')
+logic.utils.images.floor1 {
+    1.jpg
+    2.jpg
+    3.jpg
+    4.jpg
+    __init__.py
+}
 
-async def on_shutdown(dp):
-    await bot.send_message(chat_id=Secrets.CHAT_ID, text='Bot stopped')
+logic.utils.images.floor2 {
+    1.jpg
+    2.jpg
+    3.jpg
+    4.jpg
+    __init__.py
+}
 
-# Добавляем функции on_startup и on_shutdown в параметры executor.start_polling
-if __name__ == '__main__':
-    executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown)
+logic.utils.images.floor3 {
+    1.jpg
+    2.jpg
+    3.jpg
+    4.jpg
+    __init__.py
+}
+
+logic.utils.commands.py {
+    from aiogram import Bot
+    from aiogram.types import BotCommand, BotCommandScopeDefault
+
+
+    async def set_commands(bot: Bot):
+        commands = [
+            BotCommand(
+                command='start',
+                description='Начало работы'
+            )
+        ]
+
+        await bot.set_my_commands(commands, BotCommandScopeDefault())
+}
+
+logic.utils.logger.py {
+    import datetime
+
+
+    # Функция для записи информации о запросах в лог-файл
+    def log_request(user_id, username, text):
+        current_time = datetime.datetime.now()
+
+        log_entry = f"[{current_time}] User ID: {user_id}, Username: {username}, Request: {text}\n"
+
+        with open("bot_log.txt", "a", encoding="utf-8") as log_file:
+            log_file.write(log_entry)
+}
+
+logic.utils.states.py {
+from aiogram.dispatcher.filters.state import State, StatesGroup
+
+
+class MyState(StatesGroup):
+    waiting_for_data = State()
+}

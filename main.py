@@ -1,11 +1,10 @@
 import logging
-from aiogram import Dispatcher, executor
 
-from logic.config import bot
-from logic.handlers import events, gro, start, show_about, show_help, stop, input_data, plan
+from aiogram import Dispatcher, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-from logic.handlers import show_data
+from logic.config import bot
+from logic.handlers import events, gro, start, show_about, show_help, stop, input_data, plan, show_data
 from logic.utils.states import MyState
 
 # Создаем объекты Bot и Dispatcher и инициализируем их

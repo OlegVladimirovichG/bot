@@ -1,4 +1,3 @@
-from logic.utils.logger import log_request
 from aiogram import types
 
 key_request = {}
@@ -8,7 +7,7 @@ key_request = {}
 async def start(message: types.Message):
     keyboard = types.InlineKeyboardMarkup()
     button_input = types.InlineKeyboardButton(text='ВВОД СЫРЫХ ГРО', callback_data='input')
-    button_show = types.InlineKeyboardButton(text='ПОКАЗАТЬ ВСЕ СЫРЫЕ ДАННЫЕ', callback_data='show_baza')
+    button_show = types.InlineKeyboardButton(text='ПОКАЗАТЬ СЫРЫЕ ДАННЫЕ', callback_data='show_baza')
     gro_button = types.InlineKeyboardButton(text='ЗАПРОС ГРО', callback_data='gro')
     stop_button = types.InlineKeyboardButton(text='STOP', callback_data='stop')
     help_button = types.InlineKeyboardButton(text='HELP', callback_data='help')
@@ -20,8 +19,8 @@ async def start(message: types.Message):
     keyboard.add(stop_button, help_button, about_button)
 
     await message.reply(
-        "Нажмите на кнопку 'ЗАПРОС ГРО' и введи нахвание пункта, что бы получить координаты,"
-        "'ВВОД СЫРЫХ ГРО' для ввода данных в файл baza.xml или "
+        "Нажмите на кнопку 'ЗАПРОС ГРО' и введи название пункта, что бы получить координаты,\n"
+        "'ВВОД СЫРЫХ ГРО' для ввода данных в файл baza.xml или \n"
         "'ПОКАЗАТЬ ВСЕ СЫРЫЕ ДАННЫЕ' для отображения содержимого baza.xml.",
         reply_markup=keyboard)
 
